@@ -107,7 +107,7 @@ async function storeEvent(event: LedgerEvent): Promise<number> {
   });
   if (!txExists) return 0; // transaction not yet indexed; skip
 
-  const { eventType, decoded } = decodeEvent(event.topics, event.data);
+  const { eventType, topicSymbol, decoded } = decodeEvent(event.topics, event.data);
 
   // Stable dedup key: hash + first topic (mirrors existing indexer logic)
   const id = `${event.transactionHash}-${event.topics[0] ?? '0'}`;
@@ -120,6 +120,7 @@ async function storeEvent(event: LedgerEvent): Promise<number> {
       transactionHash: event.transactionHash,
       contractAddress: event.contractId,
       eventType,
+      topicSymbol,
       topics: event.topics,
       data: { raw: event.data },
       decoded: decoded as object,
