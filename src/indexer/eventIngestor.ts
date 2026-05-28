@@ -3,6 +3,7 @@ import { prismaWrite as prisma } from '../db';
 import { decodeEvent } from './decoder';
 import { fetchEvents, LedgerEvent } from './rpc';
 import { broadcastEvent } from '../ws/eventBroadcaster';
+import { broadcastSSEEvent } from '../api/sse';
 import { barrierUpsertContract, barrierUpsertEvent } from './writeBarrier';
 
 /**
@@ -126,15 +127,18 @@ async function storeEvent(event: LedgerEvent): Promise<number> {
     },
   });
 
-  broadcastEvent({
+  const broadcastPayload = {
     id,
     contractAddress: event.contractId,
     eventType,
     decoded,
-    ledger: event.ledger,
+    ledger: event.ledgerSequence,
     ledgerCloseTime: event.ledgerCloseTime,
     transactionHash: event.transactionHash,
-  });
+  };
+
+  broadcastEvent(broadcastPayload);
+  broadcastSSEEvent(broadcastPayload);
 
   return 1;
 }

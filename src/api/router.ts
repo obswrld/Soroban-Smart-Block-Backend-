@@ -12,6 +12,7 @@ import { protocolRouter } from './protocol';
 import { nftRouter } from './nft';
 import { alertsRouter } from './alerts';
 import { assetsRouter } from './assets';
+import { sseRouter } from './sse';
 
 export const router = Router();
 
@@ -28,3 +29,4 @@ router.use('/protocol', protocolRouter);
 router.use('/nft', nftRouter);
 router.use('/alerts', alertsRouter);
 router.use('/assets', assetsRouter);
+router.use('/sse', sseRouter);
