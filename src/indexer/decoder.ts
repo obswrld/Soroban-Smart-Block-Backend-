@@ -145,5 +145,5 @@ function normalizeEventType(raw: string): string {
     'authorization_window',
   ];
   const normalized = raw.toLowerCase();
-  return known.includes(normalized) ? normalized : normalized || 'custom';
+  return known.includes(normalized) ? normalized : 'custom';
 }
