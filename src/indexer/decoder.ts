@@ -1,6 +1,7 @@
 import { xdr, scValToNative } from '@stellar/stellar-sdk';
 import { getContractAbi, decodeArgs, renderHuman } from './registry';
 import { parseInvokeHostFunction } from './xdr-parser';
+import { parseSep41Event, isSep41Event } from './sep41-parser';
 import { prismaRead as prisma } from '../db';
 
 /**
@@ -97,31 +98,36 @@ export function decodeEvent(
 ): { eventType: string; topicSymbol: string | null; decoded: Record<string, unknown> } {
   try {
     const topicVals = topics.map((t) => xdr.ScVal.fromXDR(t, 'base64'));
-    const dataVal = xdr.ScVal.fromXDR(data, 'base64');
 
     // First topic is usually the event name symbol
     const rawSymbol = topicVals[0]
       ? String(scValToNative(topicVals[0]))
       : 'unknown';
 
-    const decoded: Record<string, unknown> = { event: rawSymbol };
-
-    // SEP-41 transfer event: topics = [Symbol("transfer"), from, to], data = amount
-    if (rawSymbol === 'transfer' && topicVals.length >= 3) {
-      decoded.from = String(scValToNative(topicVals[1]));
-      decoded.to = String(scValToNative(topicVals[2]));
-      decoded.amount = String(scValToNative(dataVal));
-    } else if (rawSymbol === 'mint' && topicVals.length >= 2) {
-      decoded.to = String(scValToNative(topicVals[1]));
-      decoded.amount = String(scValToNative(dataVal));
-    } else if (rawSymbol === 'burn' && topicVals.length >= 2) {
-      decoded.from = String(scValToNative(topicVals[1]));
-      decoded.amount = String(scValToNative(dataVal));
-    } else {
-      // Generic: decode all topics and data
-      decoded.topics = topicVals.map((t) => scValToNative(t));
-      decoded.data = scValToNative(dataVal);
+    // ── SEP-41 fast path ────────────────────────────────────────────────────
+    if (isSep41Event(rawSymbol)) {
+      const parsed = parseSep41Event(topics, data);
+      if (parsed) {
+        // Flatten { raw, formatted } entries to their formatted strings for
+        // storage compatibility, and keep the full structured fields too.
+        const decoded: Record<string, unknown> = {
+          event: rawSymbol,
+          humanReadable: parsed.humanReadable,
+          ...Object.fromEntries(
+            Object.entries(parsed.fields).map(([k, v]) => [k, v.formatted])
+          ),
+        };
+        return { eventType: normalizeEventType(rawSymbol), topicSymbol: rawSymbol, decoded };
+      }
     }
+
+    // ── Generic fallback ────────────────────────────────────────────────────
+    const dataVal = xdr.ScVal.fromXDR(data, 'base64');
+    const decoded: Record<string, unknown> = {
+      event: rawSymbol,
+      topics: topicVals.map((t) => scValToNative(t)),
+      data: scValToNative(dataVal),
+    };
 
     return { eventType: normalizeEventType(rawSymbol), topicSymbol: rawSymbol, decoded };
   } catch {
@@ -136,6 +142,8 @@ function normalizeEventType(raw: string): string {
     'burn',
     'swap',
     'approve',
+    'clawback',
+    'set_admin',
     'add_liquidity',
     'remove_liquidity',
     'session_authorization',
