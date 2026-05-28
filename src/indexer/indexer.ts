@@ -3,7 +3,6 @@ import { prismaWrite as prisma } from '../db';
 import { config } from '../config';
 import { fetchEvents, getLatestLedger, getRpcWebsocketUrl, getTransaction, type LedgerEvent } from './rpc';
 import { decodeTransaction, decodeEvent } from './decoder';
-import { getLatestLedger, getRpcWebsocketUrl } from './rpc';
 import { processLedgerRange } from './ledgerProcessor';
 
 const BATCH = config.indexerBatchSize;
@@ -88,6 +87,9 @@ async function processLedgerRange(start: number, end: number) {
     });
 
     await processSessionAuthorization(event, eventType, decoded, eventId);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Parallel catch-up
 // ---------------------------------------------------------------------------
