@@ -209,3 +209,66 @@ model FailedItem {
   @@index([itemType, dead])
   @@index([ledger])
 }
+
+// Storage efficiency: tracks allocated footprint bytes vs actual data bytes per tx
+model StorageEfficiencyLog {
+  id              String   @id @default(cuid())
+  transactionHash String   @unique
+  contractAddress String?
+  ledgerSequence  Int
+  // Footprint (what the tx declared it would read/write)
+  readOnlyKeys    Int      @default(0)   // number of read-only footprint keys
+  readWriteKeys   Int      @default(0)   // number of read-write footprint keys
+  footprintBytes  Int      @default(0)   // total allocated byte budget
+  // Actual usage
+  actualReadBytes  Int     @default(0)   // bytes actually read
+  actualWriteBytes Int     @default(0)   // bytes actually written
+  // Derived efficiency metrics
+  unusedBytes     Int      @default(0)   // footprintBytes - (actualReadBytes + actualWriteBytes)
+  efficiencyPct   Float    @default(0)   // (actual / footprint) * 100
+  createdAt       DateTime @default(now())
+
+  @@index([contractAddress])
+  @@index([ledgerSequence])
+  @@index([efficiencyPct])
+}
+
+// Async CSV export jobs
+model ExportJob {
+  id          String   @id @default(cuid())
+  status      String   @default("pending")  // pending | running | done | failed
+  exportType  String   // "transactions" | "events"
+  filters     Json?    // serialised query filters (contract, account, ledgerMin, etc.)
+  filePath    String?  // path to generated CSV file once done
+  rowCount    Int?     // number of rows exported
+  errorMsg    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Signer state snapshot per transaction for multi-sig smart accounts
+model SignerSnapshot {
+  id              String   @id @default(cuid())
+  transactionHash String   @unique
+  contractAddress String   // the smart-account contract
+  ledgerSequence  Int
+  // Threshold configuration at time of tx
+  lowThreshold    Int      @default(0)
+  medThreshold    Int      @default(0)
+  highThreshold   Int      @default(0)
+  // Signer participation
+  signers         Json     // array of { key, weight, signed: bool }
+  weightAchieved  Int      @default(0)   // sum of weights of keys that signed
+  thresholdMet    String   // "low" | "medium" | "high" | "none"
+  passed          Boolean  @default(false)
+  // Margin analysis
+  marginToNext    Int?     // weight needed to reach next threshold level
+  createdAt       DateTime @default(now())
+
+  @@index([contractAddress])
+  @@index([ledgerSequence])
+  @@index([passed])
+}
