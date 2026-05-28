@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prismaRead as prisma } from '../db';
+import { validateAddressParam } from '../middleware/sanitize';
 
 export const tokenRouter = Router();
 
@@ -19,7 +20,7 @@ tokenRouter.get('/', async (_req: Request, res: Response) => {
 });
 
 // GET /tokens/:address
-tokenRouter.get('/:address', async (req: Request, res: Response) => {
+tokenRouter.get('/:address', validateAddressParam('address'), async (req: Request, res: Response) => {
   const token = await prisma.contract.findFirst({
     where: { address: req.params.address, isToken: true },
   });
@@ -28,7 +29,7 @@ tokenRouter.get('/:address', async (req: Request, res: Response) => {
 });
 
 // GET /tokens/:address/transfers
-tokenRouter.get('/:address/transfers', async (req: Request, res: Response) => {
+tokenRouter.get('/:address/transfers', validateAddressParam('address'), async (req: Request, res: Response) => {
   const events = await prisma.event.findMany({
     where: { contractAddress: req.params.address, eventType: 'transfer' },
     orderBy: { ledgerSequence: 'desc' },

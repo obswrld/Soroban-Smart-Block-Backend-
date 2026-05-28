@@ -3,13 +3,14 @@ import { prismaRead, prismaWrite } from '../db';
 import { z } from 'zod';
 import { fetchContractSpec } from '../indexer/wasm-spec';
 import { abiRouter } from './abi';
+import { validateAddressParam, isValidStellarAddress } from '../middleware/sanitize';
 
 export const contractRouter = Router();
 
 const abiSchema = z.object({
-  address: z.string(),
-  name: z.string().optional(),
-  description: z.string().optional(),
+  address: z.string().refine(isValidStellarAddress, { message: 'Invalid Stellar contract address' }),
+  name: z.string().max(256).optional(),
+  description: z.string().max(2048).optional(),
   abi: z.record(z.unknown()).optional(),
 });
 
@@ -63,7 +64,7 @@ contractRouter.get('/', async (_req: Request, res: Response) => {
 });
 
 // GET /contracts/:address/stats
-contractRouter.get('/:address/stats', async (req: Request, res: Response) => {
+contractRouter.get('/:address/stats', validateAddressParam('address'), async (req: Request, res: Response) => {
   try {
     const { since } = contractStatsQuerySchema.parse(req.query);
     const stats = await getContractFunctionStats(
@@ -82,7 +83,7 @@ contractRouter.get('/:address/stats', async (req: Request, res: Response) => {
 });
 
 // GET /contracts/:address
-contractRouter.get('/:address', async (req: Request, res: Response) => {
+contractRouter.get('/:address', validateAddressParam('address'), async (req: Request, res: Response) => {
   const contract = await prismaRead.contract.findUnique({
     where: { address: req.params.address },
     include: {

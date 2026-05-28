@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prismaRead as prisma } from '../db';
 import { z } from 'zod';
+import { validateAddressParam } from '../middleware/sanitize';
 import axios from 'axios';
 import { config } from '../config';
 
@@ -12,7 +13,7 @@ const paginationSchema = z.object({
 });
 
 // GET /wallets/:address/transactions
-walletRouter.get('/:address/transactions', async (req: Request, res: Response) => {
+walletRouter.get('/:address/transactions', validateAddressParam('address'), async (req: Request, res: Response) => {
   try {
     const { page, limit } = paginationSchema.parse(req.query);
     const skip = (page - 1) * limit;
@@ -43,7 +44,7 @@ walletRouter.get('/:address/transactions', async (req: Request, res: Response) =
 });
 
 // GET /wallets/:address/events — events involving this address
-walletRouter.get('/:address/events', async (req: Request, res: Response) => {
+walletRouter.get('/:address/events', validateAddressParam('address'), async (req: Request, res: Response) => {
   try {
     const { page, limit } = paginationSchema.parse(req.query);
     const skip = (page - 1) * limit;
