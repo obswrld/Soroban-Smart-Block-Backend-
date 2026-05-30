@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prismaRead as prisma } from '../db';
+import { getBn254ExemptionByTx } from '../indexer/bn254-tracker';
 import { z } from 'zod';
 
 export const transactionRouter = Router();
@@ -16,6 +17,7 @@ const TX_SELECT = {
   feeCharged: true,
   sorobanResources: true,  // #48
   failureReason: true,     // #49
+  freezeViolation: true,   // CAP-0077
 };
 
 const listSchema = z.object({
@@ -105,5 +107,9 @@ transactionRouter.get('/:hash', async (req: Request, res: Response) => {
     include: { events: true },
   });
   if (!tx) return res.status(404).json({ error: 'Transaction not found' });
-  res.json(tx);
+
+  // Include BN254 ZK host function gas exemption data if available (CAP-0080)
+  const bn254Savings = await getBn254ExemptionByTx(req.params.hash);
+
+  res.json({ ...tx, bn254GasExemption: bn254Savings });
 });

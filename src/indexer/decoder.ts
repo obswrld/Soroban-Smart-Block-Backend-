@@ -3,6 +3,7 @@ import { getContractAbi, decodeArgs, renderHuman } from './registry';
 import { parseInvokeHostFunction } from './xdr-parser';
 import { parseSep41Event, isSep41Event } from './sep41-parser';
 import { prismaRead as prisma } from '../db';
+import { decodeMastercardFlags } from './identity-verifier';
 
 /**
  * Look up a custom EventDefinition for a given contract + topic symbol.
@@ -59,7 +60,7 @@ export async function decodeTransaction(rawXdr: string): Promise<DecodedTransact
     return { contractAddress: null, functionName: null, functionArgs: null, humanReadable: null };
   }
 
-  const { contractId: contractAddress, functionName } = parsed;
+  const { contractId: contractAddress, functionName, args } = parsed;
 
   // Re-parse raw args as xdr.ScVal[] for the existing registry helpers
   let rawArgs: xdr.ScVal[];
@@ -74,16 +75,25 @@ export async function decodeTransaction(rawXdr: string): Promise<DecodedTransact
     rawArgs = [];
   }
 
+  // Check for compliance flags if it's a mastercard contract
+  let complianceMessage = '';
+  if (contractAddress.includes('mastercard') || functionName.includes('mastercard')) {
+     const compliance = decodeMastercardFlags(args);
+     if (compliance) {
+         complianceMessage = ` | ${compliance.complianceMessage}`;
+     }
+  }
+
   const abi = await getContractAbi(contractAddress);
   if (!abi) {
-    return { contractAddress, functionName, functionArgs: null, humanReadable: `Called ${functionName} on ${contractAddress}` };
+    return { contractAddress, functionName, functionArgs: null, humanReadable: `Called ${functionName} on ${contractAddress}${complianceMessage}` };
   }
 
   const contract = await prisma.contract.findUnique({ where: { address: contractAddress } });
   const decoded = decodeArgs(functionName, rawArgs, abi, contract?.tokenDecimals ?? undefined);
   const human = decoded
-    ? renderHuman(functionName, decoded, abi, contract?.name, contract?.tokenDecimals ?? undefined)
-    : `Called ${functionName} on ${contract?.name ?? contractAddress}`;
+    ? renderHuman(functionName, decoded, abi, contract?.name, contract?.tokenDecimals ?? undefined) + complianceMessage
+    : `Called ${functionName} on ${contract?.name ?? contractAddress}` + complianceMessage;
 
   return { contractAddress, functionName, functionArgs: decoded, humanReadable: human };
 }

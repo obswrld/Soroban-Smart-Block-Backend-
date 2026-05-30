@@ -2,11 +2,13 @@ import { xdr } from '@stellar/stellar-sdk';
 import { prismaWrite as prisma } from '../db';
 import { decodeEvent } from './decoder';
 import { fetchEvents, LedgerEvent } from './rpc';
+import { trackTrustlineEvent } from './sac-trustline-mapper';
 import { broadcastEvent } from '../ws/eventBroadcaster';
 import { broadcastSSEEvent } from '../api/sse';
 import { barrierUpsertContract, barrierUpsertEvent } from './writeBarrier';
 import { getWhaleWatcher } from './whaleWatcher';
 import { dispatchWebhooks } from '../webhooks/dispatcher';
+import { maybeActivateFromTransferEvent } from './sac-account-activator';
 
 /**
  * Parse DiagnosticEvents from a raw TransactionMeta XDR (base64).
@@ -129,6 +131,21 @@ async function storeEvent(event: LedgerEvent): Promise<number> {
     },
   });
 
+  // CAP-0073: Track trustline events from SAC contracts (non-blocking)
+  trackTrustlineEvent(
+    event.transactionHash,
+    event.contractId,
+    txExists.sourceAccount,
+    eventType,
+    topicSymbol,
+    decoded as Record<string, unknown> | null,
+    event.ledgerSequence,
+    event.ledgerCloseTime,
+    null,
+  ).catch((err) =>
+    console.warn(`[sac-trustline/event] tracking failed for ${event.transactionHash}:`, err),
+  );
+
   // #136: Monitor for whale transactions
   const whaleWatcher = getWhaleWatcher();
   await whaleWatcher.monitorEvent({
@@ -140,6 +157,17 @@ async function storeEvent(event: LedgerEvent): Promise<number> {
     ledgerSequence: event.ledgerSequence,
     ledgerCloseTime: event.ledgerCloseTime,
   });
+
+  // #168: Evaluate XLM SAC transfers for destination account activation
+  if (eventType === 'transfer' && decoded && typeof decoded === 'object') {
+    maybeActivateFromTransferEvent(
+      decoded as Record<string, unknown>,
+      event.contractId,
+      event.transactionHash,
+      event.ledgerSequence,
+      event.ledgerCloseTime,
+    ).catch((err) => console.error('[sac-activator] evaluation error:', err));
+  }
 
   const broadcastPayload = {
     id,
