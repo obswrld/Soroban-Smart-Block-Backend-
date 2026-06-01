@@ -8,6 +8,7 @@ import { parseFailureReason, parseFailureReasonFromString } from './failure-pars
 import { safeXdrParse } from './protocol-guard';
 import { barrierUpsertContract, barrierUpsertLedger } from './writeBarrier';
 import { inspectSignature } from './signatureInspector';
+import { inspectCustomAccount } from './customAccountInspector';
 import { detectContention } from './contention';
 import { analyseCallTrace, storeReentrancyAlert } from './reentrancy-detector';
 import { parseCallTrace } from './call-trace';
@@ -90,6 +91,8 @@ export async function processLedgerRange(start: number, end: number): Promise<vo
       // Inspect for secp256r1 / passkey signatures (non-blocking)
       if (rawXdr) {
         inspectSignature(event.transactionHash, event.ledgerSequence, rawXdr).catch(() => {});
+        // Inspect for Soroban Custom Account "__check_auth" invocations (non-blocking)
+        inspectCustomAccount(event.transactionHash, event.ledgerSequence, rawXdr).catch(() => {});
       }
 
       // CAP-0077: Consensus Asset-Freeze — scan footprint for frozen ledger keys (non-blocking)

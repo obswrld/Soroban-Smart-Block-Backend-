@@ -24,6 +24,9 @@ import { portfolioRouter } from './portfolio';
 import { exportsRouter } from './exports';
 import { syncStateRouter } from './sync-state';
 import { yieldDistributionRouter } from './yield-distribution';
+import { dtccSettlementRouter } from './dtcc-settlement';
+import { commodityComplianceRouter } from './commodity-compliance';
+import { settlementBatchRouter } from './settlement-batch';
 
 export const router = Router();
 
@@ -51,3 +54,6 @@ router.use('/portfolio', portfolioRouter);
 router.use('/exports', exportsRouter);
 router.use('/sync-state', syncStateRouter);
 router.use('/yield-distributions', yieldDistributionRouter);
+router.use('/dtcc-settlement', dtccSettlementRouter);
+router.use('/commodity-compliance', commodityComplianceRouter);
+router.use('/settlement-batch', settlementBatchRouter);

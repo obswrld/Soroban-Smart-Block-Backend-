@@ -112,6 +112,7 @@ model Event {
   decoded         Json?    // human-readable decoded event
   ledgerSequence  Int                      // FK → Ledger.sequence
   ledgerCloseTime DateTime
+  compacted       Boolean  @default(false) // #220: true once rolled into a SettlementBatchSummary
   createdAt       DateTime @default(now())
 
   ledger      Ledger      @relation(fields: [ledgerSequence], references: [sequence])
@@ -129,6 +130,8 @@ model Event {
   @@index([contractAddress, ledgerSequence, id])
   // Filter by contract + event type + ledger for time-range queries
   @@index([contractAddress, eventType, ledgerSequence])
+  // #220: compactor scan index
+  @@index([eventType, compacted, ledgerSequence])
 }
 
 // Custom event symbol → template bindings submitted by verified project creators
@@ -694,10 +697,10 @@ model YieldDistribution {
   id              String   @id @default(cuid())
   transactionHash String
   contractAddress String
-  distributionId  String?  // batch/event-level grouping id from the contract event
+  distributionId  String?
   recipient       String
-  amount          String   // decimal string (big number)
-  tokenSymbol     String?  // e.g. "USDC", "USDT"
+  amount          String
+  tokenSymbol     String?
   windowLabel     String   @default("Corporate Yield Distribution Sync")
   ledgerSequence  Int
   ledgerCloseTime DateTime
@@ -708,6 +711,67 @@ model YieldDistribution {
   @@index([contractAddress, ledgerCloseTime])
   @@index([windowLabel])
   @@index([distributionId])
+}
+
+// #218: DTCC Tokenized Securities Settlement ID Bridge
+model DtccSettlementBridge {
+  id                  String   @id @default(cuid())
+  transactionHash     String   @unique
+  dtccSettlementId    String
+  securityId          String
+  securityType        String
+  sellerAddress       String
+  buyerAddress        String
+  quantity            String
+  settlementAmount    String
+  currency            String   @default("USD")
+  settlementStatus    String   @default("pending")
+  settlementDate      DateTime?
+  contractAddress     String?
+  ledgerSequence      Int
+  ledgerCloseTime     DateTime
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([dtccSettlementId])
+  @@index([securityId])
+  @@index([sellerAddress])
+  @@index([buyerAddress])
+  @@index([settlementStatus])
+  @@index([ledgerSequence])
+}
+
+// #219: Commodity Compliance Dual-Signer Verification Log
+model CommodityDualSignerLog {
+  id                  String   @id @default(cuid())
+  transactionHash     String   @unique
+  commodityType       String
+  commodityCode       String
+  contractAddress     String
+  traderAddress       String
+  primarySignerAddress  String
+  secondarySignerAddress String
+  primarySigned       Boolean  @default(false)
+  secondarySigned     Boolean  @default(false)
+  bothSigned          Boolean  @default(false)
+  quantity            String
+  unit                String
+  notionalValueUsd    String?
+  regulatoryJurisdiction String @default("CFTC")
+  complianceStatus    String   @default("pending")
+  expiresAt           DateTime?
+  ledgerSequence      Int
+  ledgerCloseTime     DateTime
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([commodityCode])
+  @@index([contractAddress])
+  @@index([traderAddress])
+  @@index([primarySignerAddress])
+  @@index([secondarySignerAddress])
+  @@index([complianceStatus])
+  @@index([ledgerSequence])
 }
 
 // i18n translation dictionary
@@ -744,3 +808,26 @@ model Translation {
 
 
 
+
+// #220: High-Throughput Batch-Settlement Event Compact Engine
+// One row per (contractAddress, windowKey) — a window covers WINDOW_SIZE ledgers.
+// Replaces thousands of raw settlement Event rows with a single scannable summary.
+model SettlementBatchSummary {
+  id              String   @id @default(cuid())
+  contractAddress String                        // enterprise banking contract
+  windowKey       Int                           // floor(ledgerSequence / WINDOW_SIZE)
+  ledgerMin       Int                           // first ledger in window
+  ledgerMax       Int                           // last ledger in window
+  windowStart     DateTime                      // ledgerCloseTime of first event
+  windowEnd       DateTime                      // ledgerCloseTime of last event
+  eventCount      Int                           // number of settlement events compacted
+  totalAmount     String                        // sum of settlement amounts (string for precision)
+  uniqueParties   Int                           // distinct addresses involved
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([contractAddress, windowKey])
+  @@index([contractAddress])
+  @@index([ledgerMin])
+  @@index([windowKey])
+}
