@@ -2058,3 +2058,142 @@ model MevAlert {
   @@index([acknowledged])
   @@index([createdAt])
 }
+
+// ─── Developer API Console & Key Management (#330) ───────────────────────────
+
+enum DeveloperRole {
+  admin
+  user
+  read_only
+  restricted
+}
+
+enum KeyStatus {
+  active
+  revoked
+  expired
+  suspended
+}
+
+enum DeliveryStatus {
+  success
+  failed
+  retrying
+}
+
+model BillingPlan {
+  id            String   @id @default(cuid())
+  name          String   @unique   // "free" | "developer" | "pro" | "enterprise"
+  requestsPerDay Int
+  requestsPerMonth Int
+  priceMonthly  Float    @default(0)
+  features      Json     @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  developers    Developer[]
+}
+
+model Developer {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String?
+  passwordHash  String?
+  githubId      String?        @unique
+  walletAddress String?
+  planId        String?
+  plan          BillingPlan?   @relation(fields: [planId], references: [id])
+  role          DeveloperRole  @default(user)
+  emailVerified Boolean        @default(false)
+  mfaEnabled    Boolean        @default(false)
+  mfaSecret     String?
+  devApiKeys    DevApiKey[]
+  devWebhooks   DevWebhook[]
+  usageRecords  UsageRecord[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([email])
+}
+
+model DevApiKey {
+  id             String     @id @default(cuid())
+  developerId    String
+  developer      Developer  @relation(fields: [developerId], references: [id])
+  keyPrefix      String
+  keyHash        String
+  name           String
+  permissions    Json       @default("{}")
+  allowedIps     Json?
+  allowedDomains Json?
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  status         KeyStatus  @default(active)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  usageRecords   UsageRecord[]
+
+  @@index([developerId])
+  @@index([keyPrefix])
+  @@index([status])
+}
+
+model DevWebhook {
+  id                 String          @id @default(cuid())
+  developerId        String
+  developer          Developer       @relation(fields: [developerId], references: [id])
+  url                String
+  secret             String
+  events             Json            @default("[]")
+  retryPolicy        Json?
+  headers            Json?
+  active             Boolean         @default(true)
+  lastDeliveryAt     DateTime?
+  lastDeliveryStatus DeliveryStatus?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  devDeliveries      DevWebhookDelivery[]
+
+  @@index([developerId])
+}
+
+model DevWebhookDelivery {
+  id           String      @id @default(cuid())
+  webhookId    String
+  webhook      DevWebhook  @relation(fields: [webhookId], references: [id])
+  eventType    String
+  payload      Json
+  statusCode   Int?
+  responseBody String?
+  durationMs   Int?
+  attempt      Int         @default(1)
+  delivered    Boolean     @default(false)
+  deliveredAt  DateTime?
+  createdAt    DateTime    @default(now())
+
+  @@index([webhookId])
+  @@index([delivered])
+}
+
+model UsageRecord {
+  id          String     @id @default(cuid())
+  developerId String
+  developer   Developer  @relation(fields: [developerId], references: [id])
+  apiKeyId    String?
+  apiKey      DevApiKey? @relation(fields: [apiKeyId], references: [id])
+  endpoint    String
+  method      String
+  statusCode  Int
+  latencyMs   Int        @default(0)
+  ipAddress   String?
+  createdAt   DateTime   @default(now())
+
+  @@index([developerId])
+  @@index([apiKeyId])
+  @@index([createdAt])
+  @@index([endpoint])
+}
+
+// ─── End Developer API Console & Key Management ───────────────────────────────
