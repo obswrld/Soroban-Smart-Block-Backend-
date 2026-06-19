@@ -181,3 +181,4 @@ router.use('/feed', feedRouter);
 router.use('/feed/backfill', backfillRouter);
 router.use('/feed/sse', feedSSERouter);
 router.use('/market', marketRouter);
+router.use('/predict', predictRouter);
