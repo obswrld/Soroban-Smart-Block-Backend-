@@ -1,5 +1,3 @@
-import { recordAudit } from './audit';
-
 interface BlockingRule {
   id: string;
   name: string;

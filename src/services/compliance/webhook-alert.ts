@@ -1,6 +1,4 @@
 import axios from 'axios';
-import { prismaWrite, prismaRead } from '../../db';
-import { logger } from '../../logger';
 import { recordAudit } from './audit';
 
 export type WebhookEventType =

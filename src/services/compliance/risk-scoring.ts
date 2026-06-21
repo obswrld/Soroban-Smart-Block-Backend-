@@ -1,5 +1,3 @@
-import { prismaRead } from '../../db';
-
 export interface RiskFactor {
   name: string;
   weight: number;

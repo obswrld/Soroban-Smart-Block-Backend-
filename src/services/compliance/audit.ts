@@ -1,5 +1,3 @@
-import { logger } from '../../logger';
-
 export type AuditAction =
   | 'screen_address'
   | 'review_alert'

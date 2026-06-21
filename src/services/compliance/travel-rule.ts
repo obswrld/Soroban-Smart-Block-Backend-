@@ -1,4 +1,3 @@
-import { prismaWrite, prismaRead } from '../../db';
 import { recordAudit } from './audit';
 
 const TRAVEL_RULE_THRESHOLD_XLM = 10000;
