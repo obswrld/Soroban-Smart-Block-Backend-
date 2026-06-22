@@ -86,6 +86,7 @@ import { storageRouter } from './storage';
 import { storageTrapRouter } from './storage-trap';
 import { bn254Router } from './bn254';
 import { compilerRouter } from './compiler-router';
+import { revenueRouter } from './revenue';
 
 export const router = Router();
 
@@ -153,6 +154,9 @@ router.use('/composability', composabilityRouter);
 router.use('/benchmarks', benchmarkRouter);
 router.use('/network', networkRouter);
 router.use('/schedule', scheduleRouter);
+
+// ── Fee Intelligence Platform ─────────────────────────────────────────────────
+router.use('/revenue', revenueRouter);
 
 // ── Oracle ────────────────────────────────────────────────────────────────────
 // oracle-audit uses /oracles/audit prefix to avoid root-level /:requestTxHash conflict

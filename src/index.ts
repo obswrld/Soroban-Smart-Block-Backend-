@@ -37,6 +37,7 @@ import { startPoolPriceMonitor } from './indexer/pool-price-monitor';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './logger';
 import { feedOrchestrator } from './feed/orchestrator';
+import { startFeeAggregator } from './indexer/fee-aggregator';
 
 const app = express();
 
@@ -127,6 +128,11 @@ async function main() {
       startArbitrageScanner();
     } catch (err) {
       logger.warn('Arbitrage scanner failed to start', { error: String(err) });
+    }
+    try {
+      startFeeAggregator();
+    } catch (err) {
+      logger.warn('Fee aggregator failed to start', { error: String(err) });
     }
   }
 
