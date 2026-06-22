@@ -41,6 +41,9 @@ function startPoolPriceMonitor(): void {
 function startArbitrageScanner(): void {
   logger.debug('Arbitrage scanner disabled — schema models not yet available');
 }
+function startFeeAggregator(): void {
+  logger.debug('Fee aggregator disabled — schema models not yet available');
+}
 
 const app = express();
 
