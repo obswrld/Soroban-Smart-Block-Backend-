@@ -18,6 +18,7 @@ import { coldStorageRouter, initializeColdStorage } from './middleware/coldStora
 import { networkRouter } from './middleware/networkRouter';
 import { swaggerSpec } from './indexer/swaggerSpec';
 import { attachWebSocketServer, shutdownWebSocketServer } from './ws/eventBroadcaster';
+import yogaHandler from './graphql';
 import { warmTokenMetadataCache } from './indexer/token-metadata';
 import { cacheConnect, cacheClose } from './cache';
 import { errorHandler } from './middleware/errorHandler';
@@ -70,6 +71,8 @@ app.use(coldStorageRouter);
 
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.get('/api/docs.json', (_req, res) => res.json(swaggerSpec));
+
+app.use('/api/graphql', yogaHandler as unknown as express.RequestHandler);
 
 app.use('/api/v1', router);
 
