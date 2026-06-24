@@ -3,6 +3,8 @@ import { prisma } from '../db';
 import { z } from 'zod';
 import { fetchContractSpec } from '../indexer/wasm-spec';
 import { abiRouter } from './abi';
+import { intelligenceRouter } from './intelligence';
+import { buildIntelligenceReport, findSimilarContracts } from '../intelligence/intelligence-service';
 
 export const contractRouter = Router();
 
@@ -81,6 +83,50 @@ contractRouter.get('/:address/stats', async (req: Request, res: Response) => {
   }
 });
 
+// Issue #275: GET /contracts/:address/description — shorthand description
+contractRouter.get('/:address/description', async (req: Request, res: Response) => {
+  try {
+    const report = await buildIntelligenceReport(req.params.address, true);
+    const description = report.llm?.description ?? report.classification.description;
+    res.json({
+      address: req.params.address,
+      description,
+      source: report.llm ? report.llm.provider : 'heuristic',
+      confidence: report.classification.confidence,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Issue #275: GET /contracts/:address/category — detected category
+contractRouter.get('/:address/category', async (req: Request, res: Response) => {
+  try {
+    const report = await buildIntelligenceReport(req.params.address, false);
+    res.json({
+      address: req.params.address,
+      category: report.classification.category,
+      confidence: report.classification.confidence,
+      protocols: report.classification.protocols,
+      matchedPatterns: report.classification.matchedPatterns,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Issue #275: GET /contracts/:address/similar — similar contracts
+contractRouter.get('/:address/similar', async (req: Request, res: Response) => {
+  try {
+    const report = await buildIntelligenceReport(req.params.address, false);
+    const myFunctions = report.analysis?.rawFunctionNames ?? [];
+    const similarContracts = await findSimilarContracts(req.params.address, myFunctions);
+    res.json({ address: req.params.address, similarContracts });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // GET /contracts/:address
 contractRouter.get('/:address', async (req: Request, res: Response) => {
   const contract = await prisma.contract.findUnique({
@@ -108,3 +154,7 @@ contractRouter.post('/', async (req: Request, res: Response) => {
     res.status(400).json({ error: String(e) });
   }
 });
+
+// Sub-routers (must come after explicit routes to avoid conflicts)
+contractRouter.use('/:address/abi', abiRouter);
+contractRouter.use('/:address/intelligence', intelligenceRouter);
