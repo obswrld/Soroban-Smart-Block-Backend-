@@ -11,6 +11,7 @@ import { prismaRead as prisma } from '../db';
 import { runGasAnalytics } from '../indexer/gasAnalytics';
 import { z } from 'zod';
 import { protocolEconomicsRouter } from './protocol-economics';
+import { asyncHandler } from '../middleware/asyncHandler';
 
 export const analyticsRouter = Router();
 
@@ -20,8 +21,9 @@ const querySchema = z.object({
 });
 
 // GET /analytics/gas — return pre-computed snapshots
-analyticsRouter.get('/gas', async (req: Request, res: Response) => {
-  try {
+analyticsRouter.get(
+  '/gas',
+  asyncHandler(async (req: Request, res: Response) => {
     const { bucket, limit } = querySchema.parse(req.query);
 
     const snapshots = await prisma.gasAnalyticsSnapshot.findMany({
@@ -31,20 +33,17 @@ analyticsRouter.get('/gas', async (req: Request, res: Response) => {
     });
 
     res.json({ bucket, data: snapshots });
-  } catch (e) {
-    res.status(400).json({ error: String(e) });
-  }
-});
+  }),
+);
 
 // POST /analytics/gas/run — on-demand trigger
-analyticsRouter.post('/gas/run', async (_req: Request, res: Response) => {
-  try {
+analyticsRouter.post(
+  '/gas/run',
+  asyncHandler(async (_req: Request, res: Response) => {
     await runGasAnalytics();
     res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: String(e) });
-  }
-});
+  }),
+);
 
 // ── Protocol Economic Dashboard (#301) ────────────────────────────────────────
 analyticsRouter.use('/protocol-economics', protocolEconomicsRouter);
