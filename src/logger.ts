@@ -1,44 +1,26 @@
-import { AsyncLocalStorage } from 'async_hooks';
-import * as os from 'os';
+import { traceStorage } from './middleware/correlation';
 
-// ---------------------------------------------------------------------------
-// Request-ID context (populated by the enrichment middleware)
-// ---------------------------------------------------------------------------
-export const requestContext = new AsyncLocalStorage<{ requestId?: string; userId?: string }>();
+type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
-const IS_PROD = process.env.NODE_ENV === 'production';
-const LOG_LEVEL = (process.env.LOG_LEVEL ?? 'info').toLowerCase();
-const LEVELS: Record<string, number> = { debug: 0, info: 1, warn: 2, error: 3 };
-const currentLevel = LEVELS[LOG_LEVEL] ?? 1;
+interface LogEntry {
+  level: LogLevel;
+  message: string;
+  timestamp: string;
+  requestId?: string;
+  traceId?: string;
+  spanId?: string;
+  [key: string]: unknown;
+}
 
-const BASE = {
-  service: 'soroban-explorer',
-  version: process.env.npm_package_version ?? '1.0.0',
-  env: process.env.NODE_ENV ?? 'development',
-  hostname: os.hostname(),
-};
-
-// ---------------------------------------------------------------------------
-// Core write function
-// ---------------------------------------------------------------------------
-function write(
-  level: 'debug' | 'info' | 'warn' | 'error',
-  msg: string,
-  meta?: Record<string, unknown>,
-) {
-  if (LEVELS[level] < currentLevel) return;
-
-  const ctx = requestContext.getStore();
-  const entry = {
+function log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
+  const ctx = traceStorage.getStore();
+  const entry: LogEntry = {
     level,
-    time: new Date().toISOString(),
-    ...BASE,
+    message,
+    timestamp: new Date().toISOString(),
     ...(ctx?.requestId ? { requestId: ctx.requestId } : {}),
-    ...(ctx?.userId ? { userId: ctx.userId } : {}),
-    msg,
+    ...(ctx?.traceId ? { traceId: ctx.traceId } : {}),
+    ...(ctx?.spanId ? { spanId: ctx.spanId } : {}),
     ...meta,
   };
 
