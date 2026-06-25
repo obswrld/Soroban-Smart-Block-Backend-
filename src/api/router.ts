@@ -76,7 +76,7 @@ router.use('/aa', requireApiKey, aaRouter);
 router.use('/compliance', requireApiKey, complianceRouter);
 
 // ── Token Pricing & Valuation ─────────────────────────────────────────────────
-router.use('/tokens', tokenPricesRouter);
+router.use('/token-prices', tokenPricesRouter);
 router.use('/market', marketRouter);
 router.use('/portfolio', portfolioRouter);
 router.use('/market/alerts', alertsRouter);
