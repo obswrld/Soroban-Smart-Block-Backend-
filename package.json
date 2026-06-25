@@ -34,8 +34,10 @@
     "format:fix": "prettier --write 'src/**/*.ts' 'tests/**/*.ts'",
     "prepare": "husky",
     "validate-routes": "ts-node scripts/validate-routes.ts",
+    "audit:indexes": "ts-node scripts/audit-indexes.ts",
     "test:routes": "vitest run tests/orphaned-routers-integration.test.ts",
-    "lint:errors": "eslint src/api"
+    "lint:errors": "eslint src/api",
+    "lint:error-handling": "eslint 'src/api/**/*.ts' --rule 'error-handling/require-async-handler: error' --max-warnings 0"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -101,6 +103,7 @@
     "@vitest/coverage-v8": "^1.6.1",
     "@vitest/ui": "^1.6.1",
     "eslint": "^8.57.0",
+    "eslint-plugin-error-handling": "file:./eslint-plugin-error-handling",
     "eslint-plugin-unused-imports": "^4.4.1",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.8",

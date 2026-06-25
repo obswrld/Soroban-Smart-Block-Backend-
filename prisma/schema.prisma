@@ -492,6 +492,7 @@ model Translation {
   key TranslationKey @relation(fields: [keyId], references: [id])
 
   @@unique([keyId, language])
+  @@index([keyId])
   @@index([language])
 }
 
@@ -1761,6 +1762,8 @@ model AmmPool {
   assetAAddress   String
   assetBAddress   String
   createdAt       DateTime @default(now())
+
+  @@index([poolAddress])
 }
 
 model AnonymitySetSnapshot {
@@ -1794,6 +1797,9 @@ model Attestation {
   updatedAt       DateTime @updatedAt
 
   profile ReputationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@index([chainId])
 }
 
 model AuditLog {
@@ -1824,6 +1830,8 @@ model BackfillRequest {
   errorMessage  String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
 }
 
 model Bn254GasExemption {
@@ -1935,6 +1943,8 @@ model DtccSettlementBridge {
   ledgerCloseTime  DateTime
   settlementStatus String
   createdAt        DateTime @default(now())
+
+  @@index([dtccSettlementId])
 }
 
 model Endorsement {
@@ -2484,6 +2494,9 @@ model SandboxCall {
   gasUsed         Int?
   success         Boolean
   createdAt       DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([contractId])
 }
 
 model SandboxCiRun {
@@ -2522,6 +2535,8 @@ model SandboxSession {
   expiresAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  @@index([userId])
 }
 
 model SandboxShare {
@@ -2825,6 +2840,8 @@ model WebhookDelivery {
   createdAt      DateTime  @default(now())
 
   subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
 }
 
 model WebhookSubscription {
@@ -2865,6 +2882,8 @@ model YieldHistorySnapshot {
   tvl           Float?
   ledgerSequence Int
   createdAt     DateTime @default(now())
+
+  @@index([opportunityId])
 }
 
 model YieldOpportunity {
