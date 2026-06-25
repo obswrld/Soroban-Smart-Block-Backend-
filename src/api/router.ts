@@ -41,6 +41,17 @@ import { tokenPricesRouter } from './token-prices';
 import { portfolioRouter } from './portfolio';
 import { alertsRouter } from './alerts';
 
+// ── CSV Exports ───────────────────────────────────────────────────────────────
+import { exportsRouter } from './exports';
+import { requireApiKey } from '../middleware/apiKeyAuth';
+
+// ── Freeze Management ─────────────────────────────────────────────────────────
+import { freezeRouter } from './freeze';
+
+// ── Predictive Analytics ──────────────────────────────────────────────────────
+import { predictRouter } from './predict';
+import forecastRouter from './forecast';
+
 export const router = Router();
 
 // ── Core Stellar / Soroban ────────────────────────────────────────────────────
@@ -81,29 +92,13 @@ router.use('/nft', nftRouter);
 import { bridgeTrackerRouter } from './bridge-tracker';
 router.use('/bridge-tracker', bridgeTrackerRouter);
 
-// ── Privacy ───────────────────────────────────────────────────────────────────
-import { privacyRouter } from './privacy';
-router.use('/privacy', privacyRouter);
+// ── CSV Exports (auth required for all export operations) ─────────────────────
+router.use('/exports', requireApiKey, exportsRouter);
 
-// ── Emergency Response ────────────────────────────────────────────────────────
-import { emergencyBaseRouter } from './emergency-router';
-router.use('/emergency', emergencyBaseRouter);
+// ── Freeze Management (adminAuth is applied per-mutation inside the router) ───
+router.use('/freeze', freezeRouter);
 
-// ── Webhooks ──────────────────────────────────────────────────────────────────
-import { webhooksRouter } from './webhooks';
-router.use('/webhooks', webhooksRouter);
-
-// ── Authentication ────────────────────────────────────────────────────────────
-import { authRouter } from './auth';
-import { authMultisigRouter } from './authMultisig';
-import { authOAuth2Router } from './authOAuth2';
-import { authProfileRouter } from './authProfile';
-import { authSecurityRouter } from './authSecurity';
-import { authWebhooksRouter } from './authWebhooks';
-
-router.use('/auth', authRouter);
-router.use('/auth/multisig', authMultisigRouter);
-router.use('/auth/oauth2', authOAuth2Router);
-router.use('/auth/profiles', authProfileRouter);
-router.use('/auth/security', authSecurityRouter);
-router.use('/auth/webhooks', authWebhooksRouter);
+// ── Predictive Analytics ──────────────────────────────────────────────────────
+router.use('/predict', predictRouter);
+// forecast.ts exposes alternative model-management paths under /forecast/predict/…
+router.use('/forecast', forecastRouter);
