@@ -171,6 +171,7 @@ export async function registerFrozenKey(
       frozenAtLedger,
       frozenAtTime,
       reason: reason ?? null,
+      active: true,
     },
   });
   invalidateFreezeCache();
