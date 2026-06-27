@@ -7,6 +7,8 @@ import { processResponseBody } from './redaction';
 export const MAX_ATTEMPTS = 5;
 // Hard timeout per HTTP request (ms)
 export const REQUEST_TIMEOUT_MS = 10_000;
+// How long a processing lease is held before it is considered stale (ms)
+export const LEASE_DURATION_MS = 60_000;
 
 /** Compute exponential backoff delay for a given attempt (1-based). */
 export function backoffMs(attempt: number): number {
@@ -72,37 +74,88 @@ export async function dispatchWebhooks(event: WebhookPayload): Promise<void> {
 
 /**
  * Retry all pending deliveries whose nextRetryAt is due.
+ * Rows are claimed atomically with a processing lease so that concurrent
+ * service replicas cannot pick up the same delivery twice.
+ *
  * Call this on a periodic schedule (e.g. every 30s from the indexer).
  */
 export async function retryPendingDeliveries(): Promise<void> {
-  const due = await prisma.webhookDelivery.findMany({
-    where: { status: 'pending', nextRetryAt: { lte: new Date() } },
-    include: {
-      subscription: {
-        select: {
-          url: true,
-          secret: true,
-          active: true,
-          storeResponseBody: true,
-          responseRetentionDays: true,
+  const now = new Date();
+  const leaseExpiry = new Date(now.getTime() + LEASE_DURATION_MS);
+
+  // Atomically claim a batch of due deliveries that are currently idle.
+  // The UPDATE … WHERE … prevents two replicas from claiming the same row
+  // because the second writer will find processingStatus != 'idle' and skip it.
+  const claimed = await prisma.$transaction(async (tx) => {
+    const rows = await tx.webhookDelivery.findMany({
+      where: {
+        status: 'pending',
+        nextRetryAt: { lte: now },
+        OR: [
+          { processingStatus: 'idle' },
+          // Re-claim rows whose lease has expired (e.g. the previous worker crashed)
+          { processingStatus: 'processing', leaseExpiresAt: { lte: now } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((r) => r.id);
+
+    // Mark all selected rows as "processing" in one query — rows already
+    // taken by another replica (processingStatus changed since the findMany)
+    // are simply skipped by the WHERE predicate, so no double-delivery occurs.
+    await tx.webhookDelivery.updateMany({
+      where: {
+        id: { in: ids },
+        OR: [
+          { processingStatus: 'idle' },
+          { processingStatus: 'processing', leaseExpiresAt: { lte: now } },
+        ],
+      },
+      data: { processingStatus: 'processing', leaseExpiresAt: leaseExpiry },
+    });
+
+    // Re-fetch only the rows we successfully claimed
+    return tx.webhookDelivery.findMany({
+      where: { id: { in: ids }, processingStatus: 'processing', leaseExpiresAt: leaseExpiry },
+      include: {
+        subscription: {
+          select: {
+            url: true,
+            secret: true,
+            active: true,
+            storeResponseBody: true,
+            responseRetentionDays: true,
+          },
         },
       },
-    },
+    });
   });
 
   await Promise.all(
-    due.map((d) =>
-      deliverOnce(
+    claimed.map((d) => {
+      // Skip deliveries for inactive subscriptions
+      if (!d.subscription.active) {
+        return prisma.webhookDelivery.update({
+          where: { id: d.id },
+          data: { status: 'cancelled', processingStatus: 'done', leaseExpiresAt: null },
+        });
+      }
+
+      return deliverOnce(
         d.subscriptionId,
         d.subscription.url,
         d.subscription.secret,
         null,
-        d.attempt,
+        d.attempt ?? 1,
         d.id,
         d.subscription.storeResponseBody,
         d.subscription.responseRetentionDays,
-      ),
-    ),
+      );
+    }),
   );
 }
 
@@ -127,7 +180,7 @@ async function deliverOnce(
   if (!payload && deliveryId) {
     const row = await prisma.webhookDelivery.findUnique({ where: { id: deliveryId } });
     if (!row) return;
-    eventId = row.eventId;
+    eventId = row.eventId ?? '';
     // Re-fetch the event to rebuild the payload
     const ev = await prisma.event.findUnique({ where: { id: eventId } });
     if (!ev) return;
@@ -156,14 +209,24 @@ async function deliverOnce(
   // Calculate expiration time based on retention policy
   const expiresAt = new Date(Date.now() + responseRetentionDays * 24 * 60 * 60 * 1000);
 
-  // Create or update the delivery row to "pending" before attempting
+  // Create or update the delivery row to "pending" before attempting.
+  // For new deliveries (no deliveryId) we start with processingStatus='processing'
+  // so the retry loop cannot also pick it up while the initial attempt is in-flight.
   const delivery = deliveryId
     ? await prisma.webhookDelivery.update({
         where: { id: deliveryId },
         data: { attempt, status: 'pending', nextRetryAt: null },
       })
     : await prisma.webhookDelivery.create({
-        data: { subscriptionId, eventId, attempt, status: 'pending', expiresAt },
+        data: {
+          subscriptionId,
+          eventId,
+          attempt,
+          status: 'pending',
+          processingStatus: 'processing',
+          leaseExpiresAt: new Date(Date.now() + LEASE_DURATION_MS),
+          expiresAt,
+        },
       });
 
   try {
@@ -185,6 +248,8 @@ async function deliverOnce(
         where: { id: delivery.id },
         data: {
           status: 'success',
+          processingStatus: 'done',
+          leaseExpiresAt: null,
           httpStatus: response.status,
           responseBody: processedResponseBody,
           deliveredAt: new Date(),
@@ -223,7 +288,15 @@ async function scheduleRetryOrFail(
   if (nextAttempt > MAX_ATTEMPTS) {
     await prisma.webhookDelivery.update({
       where: { id: deliveryId },
-      data: { status: 'failed', errorMsg, httpStatus, responseBody, nextRetryAt: null },
+      data: {
+        status: 'failed',
+        processingStatus: 'done',
+        leaseExpiresAt: null,
+        errorMsg,
+        httpStatus,
+        responseBody,
+        nextRetryAt: null,
+      },
     });
     return;
   }
@@ -233,6 +306,8 @@ async function scheduleRetryOrFail(
     where: { id: deliveryId },
     data: {
       status: 'pending',
+      processingStatus: 'idle',
+      leaseExpiresAt: null,
       errorMsg,
       httpStatus,
       responseBody,
