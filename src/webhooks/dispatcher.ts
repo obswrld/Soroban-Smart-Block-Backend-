@@ -1,7 +1,7 @@
-import axios from 'axios';
 import crypto from 'crypto';
 import { prismaWrite as prisma } from '../db';
 import { processResponseBody } from './redaction';
+import { assertSafeUrl, safePost, SsrfBlockedError } from './ssrf-guard';
 
 // Maximum delivery attempts before a delivery is marked permanently failed
 export const MAX_ATTEMPTS = 5;
@@ -161,6 +161,9 @@ export async function retryPendingDeliveries(): Promise<void> {
 
 /**
  * Perform a single HTTP delivery attempt.
+ * Validates the destination URL against SSRF rules before every request,
+ * including on each redirect hop.
+ *
  * @param deliveryId  If provided, updates an existing delivery row; otherwise creates one.
  */
 async function deliverOnce(
@@ -173,7 +176,6 @@ async function deliverOnce(
   storeResponseBody: boolean = true,
   responseRetentionDays: number = 90,
 ): Promise<void> {
-  // Resolve payload — for retries we re-fetch from the delivery row's eventId
   let payload: WebhookPayload | null = event;
   let eventId = event?.id ?? '';
 
@@ -198,6 +200,28 @@ async function deliverOnce(
 
   if (!payload) return;
 
+  // Pre-flight SSRF check: validate URL and resolve DNS before opening a
+  // socket.  safePost() will re-validate on every redirect hop as well.
+  try {
+    await assertSafeUrl(url);
+  } catch (err) {
+    const msg = err instanceof SsrfBlockedError ? err.message : String(err);
+    // Permanently fail — retrying a blocked URL will never succeed.
+    if (deliveryId) {
+      await prisma.webhookDelivery.update({
+        where: { id: deliveryId },
+        data: {
+          status: 'failed',
+          processingStatus: 'done',
+          leaseExpiresAt: null,
+          errorMsg: msg,
+          nextRetryAt: null,
+        },
+      });
+    }
+    return;
+  }
+
   const body = JSON.stringify({ event: payload, attempt });
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
@@ -206,7 +230,6 @@ async function deliverOnce(
     headers['X-Webhook-Signature'] = `sha256=${sig}`;
   }
 
-  // Calculate expiration time based on retention policy
   const expiresAt = new Date(Date.now() + responseRetentionDays * 24 * 60 * 60 * 1000);
 
   // Create or update the delivery row to "pending" before attempting.
@@ -230,11 +253,8 @@ async function deliverOnce(
       });
 
   try {
-    const response = await axios.post(url, body, {
-      headers,
-      timeout: REQUEST_TIMEOUT_MS,
-      validateStatus: () => true, // handle all HTTP codes ourselves
-    });
+    // safePost validates the URL (and every redirect target) before sending
+    const response = await safePost(url, body, headers, REQUEST_TIMEOUT_MS);
 
     const success = response.status >= 200 && response.status < 300;
     const rawResponseBody = String(response.data ?? '');
@@ -271,6 +291,22 @@ async function deliverOnce(
     );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+
+    // SSRF blocks on redirect are permanent failures — don't retry
+    if (err instanceof SsrfBlockedError) {
+      await prisma.webhookDelivery.update({
+        where: { id: delivery.id },
+        data: {
+          status: 'failed',
+          processingStatus: 'done',
+          leaseExpiresAt: null,
+          errorMsg: msg,
+          nextRetryAt: null,
+        },
+      });
+      return;
+    }
+
     const processedError = storeResponseBody ? processResponseBody(msg, 500, true) : null;
     await scheduleRetryOrFail(delivery.id, attempt, msg, undefined, processedError);
   }
