@@ -2856,23 +2856,26 @@ model VulnerabilitySource {
 }
 
 model WebhookDelivery {
-  id             String    @id @default(cuid())
-  subscriptionId String
-  eventId        String?
-  attempt        Int?
-  status         String?
-  httpStatus     Int?
-  responseBody   String?
-  errorMsg       String?
-  deliveredAt    DateTime?
-  nextRetryAt    DateTime?
-  expiresAt      DateTime?
-  createdAt      DateTime  @default(now())
+  id               String    @id @default(cuid())
+  subscriptionId   String
+  eventId          String?
+  attempt          Int?
+  status           String?
+  processingStatus String    @default("idle") // "idle" | "processing" | "done"
+  leaseExpiresAt   DateTime? // null unless processingStatus == "processing"
+  httpStatus       Int?
+  responseBody     String?
+  errorMsg         String?
+  deliveredAt      DateTime?
+  nextRetryAt      DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime  @default(now())
 
   subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@index([subscriptionId])
   @@index([expiresAt])
+  @@index([status, nextRetryAt, processingStatus])
 }
 
 model WebhookSubscription {
