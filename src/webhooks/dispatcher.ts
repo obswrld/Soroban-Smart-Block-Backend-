@@ -83,6 +83,9 @@ export async function retryPendingDeliveries(): Promise<void> {
   const now = new Date();
   const leaseExpiry = new Date(now.getTime() + LEASE_DURATION_MS);
 
+  // Atomically claim a batch of due deliveries that are currently idle.
+  // The UPDATE … WHERE … prevents two replicas from claiming the same row
+  // because the second writer will find processingStatus != 'idle' and skip it.
   const claimed = await prisma.$transaction(async (tx) => {
     const rows = await tx.webhookDelivery.findMany({
       where: {
@@ -90,6 +93,7 @@ export async function retryPendingDeliveries(): Promise<void> {
         nextRetryAt: { lte: now },
         OR: [
           { processingStatus: 'idle' },
+          // Re-claim rows whose lease has expired (e.g. the previous worker crashed)
           { processingStatus: 'processing', leaseExpiresAt: { lte: now } },
         ],
       },
@@ -100,6 +104,9 @@ export async function retryPendingDeliveries(): Promise<void> {
 
     const ids = rows.map((r) => r.id);
 
+    // Mark all selected rows as "processing" in one query — rows already
+    // taken by another replica (processingStatus changed since the findMany)
+    // are simply skipped by the WHERE predicate, so no double-delivery occurs.
     await tx.webhookDelivery.updateMany({
       where: {
         id: { in: ids },
@@ -111,6 +118,7 @@ export async function retryPendingDeliveries(): Promise<void> {
       data: { processingStatus: 'processing', leaseExpiresAt: leaseExpiry },
     });
 
+    // Re-fetch only the rows we successfully claimed
     return tx.webhookDelivery.findMany({
       where: { id: { in: ids }, processingStatus: 'processing', leaseExpiresAt: leaseExpiry },
       include: {
@@ -129,6 +137,7 @@ export async function retryPendingDeliveries(): Promise<void> {
 
   await Promise.all(
     claimed.map((d) => {
+      // Skip deliveries for inactive subscriptions
       if (!d.subscription.active) {
         return prisma.webhookDelivery.update({
           where: { id: d.id },
@@ -174,6 +183,7 @@ async function deliverOnce(
     const row = await prisma.webhookDelivery.findUnique({ where: { id: deliveryId } });
     if (!row) return;
     eventId = row.eventId ?? '';
+    // Re-fetch the event to rebuild the payload
     const ev = await prisma.event.findUnique({ where: { id: eventId } });
     if (!ev) return;
     payload = {
@@ -222,6 +232,9 @@ async function deliverOnce(
 
   const expiresAt = new Date(Date.now() + responseRetentionDays * 24 * 60 * 60 * 1000);
 
+  // Create or update the delivery row to "pending" before attempting.
+  // For new deliveries (no deliveryId) we start with processingStatus='processing'
+  // so the retry loop cannot also pick it up while the initial attempt is in-flight.
   const delivery = deliveryId
     ? await prisma.webhookDelivery.update({
         where: { id: deliveryId },
