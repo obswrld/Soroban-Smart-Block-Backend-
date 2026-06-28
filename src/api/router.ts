@@ -40,6 +40,7 @@ import { marketRouter } from './market';
 import { tokenPricesRouter } from './token-prices';
 import { portfolioRouter } from './portfolio';
 import { alertsRouter } from './alerts';
+import { oracleIntelligenceRouter } from './oracle-intelligence';
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 import { adminErrorsRouter } from './admin/errors';
@@ -80,6 +81,7 @@ router.use('/token-prices', tokenPricesRouter);
 router.use('/market', marketRouter);
 router.use('/portfolio', portfolioRouter);
 router.use('/market/alerts', alertsRouter);
+router.use('/oracles/intelligence', oracleIntelligenceRouter);
 
 // ── Natural Language Query Interface (#328) ───────────────────────────────────
 // nlq invokes LLM APIs — compute-heavy and billed per request; key required
